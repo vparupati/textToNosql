@@ -1,0 +1,6 @@
+PROMPTING_GUIDE.md
+venv/
+__pycache__/
+*.pyc
+.env
+logs/
