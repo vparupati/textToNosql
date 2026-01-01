@@ -124,14 +124,28 @@ class SMARTFramework:
         Index training examples for RAG retrieval
         
         Args:
-            examples: List of training examples with 'question', 'query', 'schema'
+            examples: List of training examples with 'question', 'query' or 'mongo_query', 'schema'
         """
         if not self.rag_enabled or not self.rag_retriever:
             logger.warning("RAG not enabled, skipping indexing")
             return
         
-        self.rag_retriever.index_examples(examples)
-        logger.info(f"Indexed {len(examples)} training examples")
+        # Normalize example format - use 'query' key consistently
+        normalized_examples = []
+        for ex in examples:
+            query = ex.get('query', ex.get('mongo_query', ''))
+            
+            # Normalize to modern MongoDB syntax
+            query = query.replace('.count(', '.countDocuments(')
+            
+            normalized_examples.append({
+                'question': ex.get('question', ''),
+                'query': query,
+                'schema': ex.get('schema', '')
+            })
+        
+        self.rag_retriever.index_examples(normalized_examples)
+        logger.info(f"Indexed {len(normalized_examples)} training examples")
     
     def translate(self, nlq: str, use_rag: bool = True, 
                  use_execution_optimization: bool = True) -> Dict[str, Any]:

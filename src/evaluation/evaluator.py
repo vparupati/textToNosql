@@ -179,7 +179,12 @@ class Evaluator:
         """Extract query components"""
         import re
         
-        components = {}
+        components = {
+            "collection": None,
+            "operation": None,
+            "filter": None,
+            "projection": None
+        }
         
         # Extract collection name
         coll_match = re.search(r'db\.(\w+)', query)

@@ -24,7 +24,7 @@ class ExecutionOptimizer:
         self.llm_client = llm_client
         self.mongo_client = mongo_client
         self.prompt_template = PromptTemplate()
-        self.max_retries = 3
+        self.max_retries = 5
     
     def optimize(self, nlq: str, query: str, 
                 schemas: Dict[str, any]) -> Dict[str, any]:

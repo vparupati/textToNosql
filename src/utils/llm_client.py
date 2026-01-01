@@ -352,14 +352,27 @@ Please respond with ONLY the field names separated by commas, nothing else."""
             "the MongoDB collections and their fields."
         )
         
-        user = f"""# Given the MongoDB collections and their fields and natural language query, please generate final MongoDB query.
-## Natural Language Query: `{nlq}`
-## MongoDB Collection and their Fields
+        user = f"""# Generate MongoDB query for the natural language question.
+
+## Question
+`{nlq}`
+
+## Available Collections
 {schemas}
 
-Please respond with ONLY the MongoDB query (find, aggregate, etc.), nothing else. 
-The query should be executable and end with a semicolon.
-Example format: db.collection.find({{}}, {{"field": 1}});"""
+## Syntax Rules:
+1. Use countDocuments() not count()
+2. Operators use strings: {{$min: "$age"}} not {{$min: ["$age"]}}
+3. Quote field names: {{"field": 1}}
+4. Use lowercase null
+
+## Operation Guidance:
+- .find() → filtering, projection, sorting
+- .distinct() → unique values
+- .aggregate() → grouping, calculations across documents
+
+Respond with only the MongoDB query ending with semicolon.
+Example: db.collection.find({{}}, {{"field": 1}});"""
         
         return {"system": system, "user": user}
     
@@ -453,7 +466,18 @@ Respond with ONLY the refined MongoDB query, nothing else."""
 ## MongoDB Schemas
 {schemas}
 
-Please provide a corrected MongoDB query that fixes the error and returns the expected results.
-Respond with ONLY the corrected query, nothing else."""
+## Common Error Fixes:
+- "name 'null' is not defined" → Replace unquoted null with None or use "null" as string
+- "Unsupported query type" with .count() → Change to .countDocuments()
+- "expects a single argument" for $min/$max → Remove array brackets: {{$min: "$field"}} not {{$min: ["$field"]}}
+- Syntax errors → Ensure all field names in aggregation are double-quoted
+- "name 'X' is not defined" → Add quotes around field name X
+
+Please provide a corrected MongoDB query that:
+1. Fixes the specific error mentioned above
+2. Uses proper MongoDB syntax (quotes, operators, methods)
+3. Returns the expected results for the question
+
+Respond with ONLY the corrected query, nothing else (must end with semicolon)."""
         
         return {"system": system, "user": user}

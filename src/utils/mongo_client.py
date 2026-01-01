@@ -58,6 +58,68 @@ class MongoDBClient:
             self.client.close()
             logger.info("Disconnected from MongoDB")
     
+    def _normalize_mongo_syntax(self, query_part: str) -> str:
+        """
+            Normalized query string
+        """
+        import re
+        
+        if not query_part:
+            return query_part
+        
+        # First, normalize whitespace and newlines for multiline queries
+        query_part = re.sub(r'\s+', ' ', query_part).strip()
+        
+        # Convert JavaScript literals to Python - comprehensive approach
+        # Handle all contexts: after colons, in arrays, after commas, etc.
+        query_part = re.sub(r':\s*true\b', ': True', query_part)
+        query_part = re.sub(r':\s*false\b', ': False', query_part)
+        query_part = re.sub(r':\s*null\b', ': None', query_part)
+        query_part = re.sub(r',\s*true\b', ', True', query_part)
+        query_part = re.sub(r',\s*false\b', ', False', query_part)
+        query_part = re.sub(r',\s*null\b', ', None', query_part)
+        query_part = re.sub(r'\[\s*true\b', '[True', query_part)
+        query_part = re.sub(r'\[\s*false\b', '[False', query_part)
+        query_part = re.sub(r'\[\s*null\b', '[None', query_part)
+        query_part = re.sub(r'\(\s*true\b', '(True', query_part)
+        query_part = re.sub(r'\(\s*false\b', '(False', query_part)
+        query_part = re.sub(r'\(\s*null\b', '(None', query_part)
+        
+        # Step 1: Temporarily replace quoted strings with placeholders to protect them
+        quoted_strings = []
+        placeholder_prefix = "___QUOTED_STRING_"
+        
+        def save_quoted_string(match):
+            quoted_strings.append(match.group(0))
+            return f'{placeholder_prefix}{len(quoted_strings) - 1}___'
+        
+        # Protect double-quoted strings
+        query_part = re.sub(r'"[^"]*"', save_quoted_string, query_part)
+        # Protect single-quoted strings
+        query_part = re.sub(r"'[^']*'", save_quoted_string, query_part)
+        
+        # Step 2: Now quote unquoted field names (no quotes left to interfere)
+        def quote_field(match):
+            field = match.group(1)
+            # Don't quote if it's a number, boolean, null, or placeholder
+            if field in ('true', 'false', 'null', 'True', 'False', 'None', 'Infinity'):
+                return match.group(0)
+            if field.startswith(placeholder_prefix):
+                return match.group(0)
+            if field.replace('.', '').replace('_', '').replace('$', '').isdigit():
+                return match.group(0)
+            return f'"{field}"' + match.group(2)
+        
+        # Match: word/$/. characters followed by colon
+        query_part = re.sub(r'([\w.$]+)(\s*:)', quote_field, query_part)
+        
+        # Step 3: Restore quoted strings from placeholders
+        for i, quoted_str in enumerate(quoted_strings):
+            placeholder = f'{placeholder_prefix}{i}___'
+            query_part = query_part.replace(placeholder, quoted_str)
+        
+        return query_part
+    
     def execute_query(self, query_str: str, collection_name: Optional[str] = None) -> Dict[str, Any]:
         """
         Execute a MongoDB query string
@@ -111,6 +173,10 @@ class MongoDBClient:
         """
         import re
         
+        # Ensure database connection is established
+        if self.db is None:
+            self.connect()
+        
         # Remove trailing semicolon if present
         query_str = query_str.strip().rstrip(';')
         
@@ -155,7 +221,7 @@ class MongoDBClient:
         if '.sort(' in query_str:
             sort_match = re.search(r'\.sort\((.*?)\)', query_str)
             if sort_match:
-                sort_params = eval(sort_match.group(1))
+                sort_params = eval(self._normalize_mongo_syntax(sort_match.group(1)))
                 cursor = cursor.sort(sort_params)
         
         if '.limit(' in query_str:
@@ -177,7 +243,7 @@ class MongoDBClient:
         pipeline_str = agg_match.group(1)
         
         # Parse pipeline (it's a JSON array)
-        pipeline = eval(pipeline_str)
+        pipeline = eval(self._normalize_mongo_syntax(pipeline_str))
         
         # Execute aggregation
         cursor = collection.aggregate(pipeline)
@@ -192,7 +258,7 @@ class MongoDBClient:
             raise ValueError("Invalid countDocuments query format")
         
         filter_str = count_match.group(1)
-        filter_dict = eval(filter_str) if filter_str else {}
+        filter_dict = eval(self._normalize_mongo_syntax(filter_str)) if filter_str else {}
         
         count = collection.count_documents(filter_dict)
         return [{"count": count}]
@@ -207,7 +273,7 @@ class MongoDBClient:
         
         field = distinct_match.group(1)
         filter_str = distinct_match.group(2)
-        filter_dict = eval(filter_str) if filter_str else {}
+        filter_dict = eval(self._normalize_mongo_syntax(filter_str)) if filter_str else {}
         
         values = collection.distinct(field, filter_dict)
         return [{"values": values}]
@@ -244,8 +310,8 @@ class MongoDBClient:
         if current.strip():
             parts.append(current.strip())
         
-        filter_dict = eval(parts[0]) if parts else {}
-        projection_dict = eval(parts[1]) if len(parts) > 1 else {}
+        filter_dict = eval(self._normalize_mongo_syntax(parts[0])) if parts else {}
+        projection_dict = eval(self._normalize_mongo_syntax(parts[1])) if len(parts) > 1 else {}
         
         return filter_dict, projection_dict
     
